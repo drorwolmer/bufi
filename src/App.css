@@ -1,38 +1,117 @@
+body,
+html {
+  min-height: 100%;
+  height: 100%;
+}
+#root {
+  min-height: 100%;
+  height: 100%;
+}
 .App {
+  background: white;
+  margin: 0 auto;
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.data-table-container,
+#expense-form {
+  flex: 1 1 auto;
+  overflow: scroll;
+}
+
+#expesnse-form {
+  flex: 1 1 auto;
+  background: red;
+}
+
+#expense-form .container > * {
+  margin: 0.5em 0;
+}
+
+table.data-table {
+  min-height: min-content;
+  color: #333;
+  width: 100%;
+  border-collapse: collapse;
+  border-style: hidden;
+}
+table.data-table .progress {
+  font-size: 1em;
+  height: 1.5em;
+}
+
+table.data-table tr:nth-child(odd) {
+  background-color: #f2f2f7ff;
+}
+
+table.data-table td.entry-name {
+  width: 15%;
+  flex-wrap: nowrap;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* padding: 0.5em; */
+}
+
+.data-table td {
+  padding: 0.2em;
+  /* border-top: 1px solid #ddd; */
+  /* border-bottom: 1px solid #ddd; */
+  padding: 0.5em;
+}
+
+.data-table td.spinner {
   text-align: center;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+.data-table tr.budget-expenses td {
+  font-size: 0.8em;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+.progress-bar {
+  text-align: left;
+  padding-left: 0.5em;
+  overflow: visible;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+.progress {
+  /* border: 1px solid #555; */
+  background: #333;
+}
+
+.total {
+  flex: 0 1 auto;
+  padding: 0.25em;
+  border-top: 1px solid #ccc;
+}
+.total .progress {
+  height: 2em !important;
+  font-size: 1.2em;
+}
+
+.top-navbar {
+  flex: 1 1 auto;
+  display: flex;
+}
+.loading {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  align-items: center;
 }
 
-.App-link {
-  color: #61dafb;
+.loading .progress {
+  width: 80%;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.expense-row td {
+  flex-wrap: nowrap;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
