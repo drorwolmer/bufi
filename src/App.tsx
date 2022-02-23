@@ -1,24 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
-import axios from "axios";
 import { Container, Nav, Navbar, ProgressBar, Spinner } from "react-bootstrap";
 import moment from "moment";
 import ExpenseForm from "./ExpenseForm";
-
-export type BudgetEntry = {
-  name: string;
-  budget: number;
-  expense: number;
-};
-
-export type ExpenseEntry = {
-  id: number;
-  date: moment.Moment;
-  category: string;
-  expense: number;
-  who: string;
-  description: string;
-};
+import { BudgetEntry, ExpenseEntry } from "./types";
+import { AppDispatch, bufiApi } from "./store";
+import { useDispatch } from "react-redux";
 
 const getProgressColor = (remainingPercent: number) => {
   if (remainingPercent === 0) {
@@ -30,58 +17,6 @@ const getProgressColor = (remainingPercent: number) => {
   } else {
     return "danger";
   }
-};
-
-const getExpenses = async (): Promise<ExpenseEntry[]> => {
-  const res = await axios.get<string[][]>("https://bufi.haminet.fm/expenses");
-
-  let id = 0;
-
-  const data: ExpenseEntry[] = res.data
-    .map((r) => {
-      return {
-        id: id++,
-        date: moment(r[0], "DD/MM/YYYY"),
-        category: r[1],
-        expense: parseInt(r[2]),
-        who: r[3],
-        description: r[4],
-      };
-    })
-    .sort((a, b) => a.date.valueOf() - b.date.valueOf());
-  data.reverse();
-  return data;
-};
-
-const getBudget = async (): Promise<{
-  budgetEntries: BudgetEntry[];
-  totalExpense: number;
-  totalIncome: number;
-}> => {
-  const res = await axios.get<string[][]>("https://bufi.haminet.fm/budget");
-  const budgetEntries: BudgetEntry[] = res.data
-    .map((r) => {
-      return {
-        name: r[0],
-        budget: Math.abs(parseInt(r[1])),
-        expense: parseInt(r[2]),
-      };
-    })
-    .filter((v) => v.expense >= 0);
-
-  const totalIncome = res.data
-    .map((r) => {
-      return {
-        name: r[0],
-        budget: Math.abs(parseInt(r[1])),
-        expense: r[2],
-      };
-    })
-    .filter((v) => v.expense === "INCOME")
-    .reduce((acc, v) => acc + v.budget, 0);
-
-  const totalExpense = budgetEntries.reduce((acc, v) => acc + v.expense, 0);
-  return { budgetEntries: budgetEntries, totalIncome, totalExpense };
 };
 
 const BudgetRow = ({
@@ -97,16 +32,12 @@ const BudgetRow = ({
 }) => {
   const remaining = entry.budget - entry.expense;
   const remainingPercent = 100 * (entry.expense / entry.budget);
-  const [expenses, setExpenses] = useState<ExpenseEntry[]>();
 
-  useEffect(() => {
-    if (!showEntries) {
-      return;
-    }
-    getExpenses().then((r) => {
-      setExpenses(r.filter((e) => e.category === entry.name).slice(0, 10));
-    });
-  }, [showEntries, entry.name]);
+  const { expenses } = bufiApi.endpoints.getExpenses.useQuery(undefined, {
+    selectFromResult: ({ data }) => ({
+      expenses: data?.filter((e) => e.category === entry.name).slice(0, 10),
+    }),
+  });
 
   const color = useMemo(() => {
     return getProgressColor(remainingPercent);
@@ -123,9 +54,6 @@ const BudgetRow = ({
         <td onClick={onClick} className="entry-name">
           {entry.name}
         </td>
-        {/* <td>{entry.budget}</td>
-      <td>{entry.expense}</td>
-      <td>{remaining}</td> */}
         <td className="entry-progress" colSpan={3}>
           <ProgressBar onClick={onProgressBarClick}>
             <ProgressBar
@@ -155,8 +83,10 @@ const BudgetRow = ({
       )}
       {showEntries &&
         expenses?.map((e) => (
-          <tr className="budget-expenses">
-            <td style={{ width: "10px" }}>{e.date.format("DD/MM")}</td>
+          <tr key={e.id} className="budget-expenses">
+            <td style={{ width: "10px" }}>
+              {moment(e.timestamp).format("DD/MM")}
+            </td>
             <td>{`${e.expense}`}</td>
             <td>{e.description || ""}</td>
             <td>{e.who}</td>
@@ -177,7 +107,7 @@ const ExpenseRow = ({
 }) => {
   return (
     <tr className="expense-row" onClick={onClick}>
-      <td>{expense.date.format("DD/MM")}</td>
+      <td>{moment(expense.timestamp).format("DD/MM")}</td>
       <td>
         {expense.category}
         {isExpanded && <div>{expense.description}</div>}
@@ -189,60 +119,45 @@ const ExpenseRow = ({
 };
 
 function App() {
-  const [budgetEntries, setBudgetEntries] = useState<BudgetEntry[]>();
-  const [totalExpense, setTotalExpense] = useState<number>(0);
-  const [totalIncome, setTotalIncome] = useState<number>(0);
-  const [isFetching, setFetching] = useState(false);
-  const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const dispatch = useDispatch<AppDispatch>();
   const [page, setPage] = useState<"budget" | "expenses" | "form">("budget");
   const [selectedCategory, setSelectedCategory] = useState<string>();
-
   const [selectedExpense, setSelectedExpense] = useState<number>();
 
-  const fetchBudget = useCallback(async () => {
-    if (isFetching) {
-      console.error("Already fetching");
-      return;
-    }
-    setFetching(true);
-    const v = await getBudget();
-    setBudgetEntries(v.budgetEntries);
-    setTotalExpense(v.totalExpense);
-    setTotalIncome(v.totalIncome);
-    setFetching(false);
-  }, [isFetching]);
+  const {
+    data: expenses,
+    isFetching: expensesLoading,
+    refetch: refetchExpenses,
+  } = bufiApi.endpoints.getExpenses.useQuery(undefined, {
+    // pollingInterval: 3000,
+  });
+  const {
+    budgetEntries,
+    budgetLoading,
+    totalIncome,
+    totalExpense,
+    refetch: refetchBudget,
+  } = bufiApi.endpoints.getBudget.useQuery(undefined, {
+    selectFromResult: ({ data, isFetching }) => ({
+      budgetEntries: data?.expenses,
+      budgetIncome: data?.income,
+      budgetLoading: isFetching,
+      totalIncome: data?.income.reduce((a, b) => a + b.budget, 0) || 0,
+      totalExpense: data?.expenses.reduce((a, b) => a + b.expense, 0) || 0,
+    }),
+  });
 
-  const fetchExpenses = useCallback(async () => {
-    if (isFetching) {
-      console.error("Already fetching");
-      return;
-    }
-    setFetching(true);
-    const v = await getExpenses();
-    setExpenses(v);
-    setFetching(false);
-  }, [isFetching]);
-
-  useEffect(() => {
-    if (isInitialized || isFetching) {
-      return;
-    }
-    setSelectedCategory(undefined);
-    fetchBudget().then(() => setIsInitialized(true));
-  }, [isInitialized, fetchBudget, isFetching]);
+  const isFetching = expensesLoading || budgetLoading;
 
   const handleBudgetClick: React.MouseEventHandler = (e) => {
     setSelectedCategory(undefined);
     setPage("budget");
-    fetchBudget();
-    e.preventDefault();
+    refetchBudget();
   };
 
   const handleExpensesClick: React.MouseEventHandler = (e) => {
     setPage("expenses");
-    fetchExpenses();
-    e.preventDefault();
+    refetchExpenses();
   };
 
   const handleBudgetNameClick: React.MouseEventHandler = (e) => {

@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import { google } from "googleapis";
 import express from "express";
+import { Request } from "express";
 import cors from "cors";
 import moment from "moment";
 
@@ -22,20 +23,95 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 const port = 3001;
-app.get("/expenses", async (req, res) => {
+app.get("/expenses", async (req: Request<{ since?: string }>, res) => {
   const r = await SHEETS.spreadsheets.values.get({
     spreadsheetId: "1sIcPmC3Thkm_0D7OBGNKEOLVaz7Iloe7Y_Zvkw7_5W4",
     range: "poop!A3:E",
   });
-  res.send(r.data.values);
+
+  const since =
+    req.query.since !== undefined
+      ? moment.utc(req.query.since as string, "DD/MM/YYYY")
+      : undefined;
+
+  res.send(
+    r.data.values
+      .filter((row) => {
+        if (since) {
+          const d = moment(row[0], "DD/MM/YYYY");
+          return d.isSameOrAfter(since);
+        }
+        return true;
+      })
+      .map(([date, category, amount, who, what]) => ({
+        date,
+        amount: parseFloat(amount),
+        category,
+        who,
+        what,
+      }))
+  );
 });
 
 app.get("/budget", async (req, res) => {
   const r = await SHEETS.spreadsheets.values.get({
     spreadsheetId: "1sIcPmC3Thkm_0D7OBGNKEOLVaz7Iloe7Y_Zvkw7_5W4",
-    range: "Budget!A3:C",
+    range: "Budget2!A2:B",
   });
-  res.send(r.data.values);
+
+  const data: { [category: string]: number } = {};
+  for (const row of r.data.values) {
+    if (row.length === 1) {
+      continue;
+    }
+    data[row[0]] = parseFloat(row[1].replace(",", ""));
+  }
+  res.send(data);
+});
+
+app.delete("/expense", async (req: Request<{ id: string }>, res) => {
+  // https://docs.google.com/spreadsheets/d/1sIcPmC3Thkm_0D7OBGNKEOLVaz7Iloe7Y_Zvkw7_5W4/edit#gid=613526617
+  const POOP_SHEET_ID = 613526617;
+
+  if (!req.query.id) {
+    return res.status(400).send("Missing id");
+  }
+
+  // Get the row index by id
+  const r = await SHEETS.spreadsheets.values.get({
+    spreadsheetId: "1sIcPmC3Thkm_0D7OBGNKEOLVaz7Iloe7Y_Zvkw7_5W4",
+    range: "poop!A:E",
+  });
+
+  let rowIndex: number;
+  r.data.values.forEach((row, i) => {
+    if (row[4] === req.query.id) {
+      rowIndex = i;
+    }
+  });
+
+  if (!rowIndex) {
+    return res.status(400).send("Invalid id");
+  }
+
+  await SHEETS.spreadsheets.batchUpdate({
+    spreadsheetId: "1sIcPmC3Thkm_0D7OBGNKEOLVaz7Iloe7Y_Zvkw7_5W4",
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId: POOP_SHEET_ID,
+              dimension: "ROWS",
+              startIndex: rowIndex,
+              endIndex: rowIndex + 1,
+            },
+          },
+        },
+      ],
+    },
+  });
+  res.send({ success: true });
 });
 
 app.post("/expense", async (req, res) => {
@@ -49,12 +125,12 @@ app.post("/expense", async (req, res) => {
 
   const r = await SHEETS.spreadsheets.values.append({
     spreadsheetId: "1sIcPmC3Thkm_0D7OBGNKEOLVaz7Iloe7Y_Zvkw7_5W4",
-    range: "poop!A3:E",
+    range: "poop!A3:F",
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
 
     requestBody: {
-      range: "poop!A3:E",
+      range: "poop!A3:F",
       majorDimension: "ROWS",
       values: [
         [
@@ -67,8 +143,8 @@ app.post("/expense", async (req, res) => {
       ],
     },
   });
-  console.error(r);
-  res.send("OK");
+  // console.error(r);
+  res.send(expense);
 });
 
 app.listen(port, () => {
